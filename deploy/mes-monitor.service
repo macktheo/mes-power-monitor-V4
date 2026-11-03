@@ -1,0 +1,19 @@
+# Auto-start di Linux / Raspberry Pi (systemd). Ubah User dan path sesuai lokasi proyek.
+#   sudo cp deploy/mes-monitor.service /etc/systemd/system/
+#   sudo systemctl disable --now mosquitto        # matikan broker bawaan (port 1883 bentrok)
+#   sudo systemctl daemon-reload && sudo systemctl enable --now mes-monitor
+#   journalctl -u mes-monitor -f                  # lihat log
+[Unit]
+Description=MES Power Monitor (broker + bridge + dashboard)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/mes-power-monitor
+ExecStart=/usr/bin/node scripts/start-all.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

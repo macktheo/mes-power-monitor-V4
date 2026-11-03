@@ -1,0 +1,29 @@
+{
+  "name": "mes-power-monitor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Monitoring daya ESP32 + PZEM-004T via MQTT (broker + bridge ke PostgreSQL + dashboard Vercel)",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4",
+    "mqtt": "^5.10.1"
+  },
+  "scripts": {
+    "setup": "node scripts/configure.js",
+    "init-db": "node scripts/init-db.js",
+    "check": "node scripts/check-energy.js",
+    "deploy": "node scripts/deploy.js",
+    "flash": "node scripts/flash.js",
+    "flash:monitor": "node scripts/flash.js --monitor",
+    "monitor": "node scripts/flash.js --monitor-only",
+    "bridge": "node bridge/bridge.js",
+    "mqtt:broker": "node scripts/mqtt-users.js --run",
+    "mqtt:users": "node scripts/mqtt-users.js",
+    "start": "node scripts/start-all.js",
+    "web": "node scripts/local-server.js",
+    "cleanup": "node scripts/cleanup-legacy.js",
+    "test": "node --test"
+  }
+}

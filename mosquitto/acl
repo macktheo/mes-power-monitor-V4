@@ -1,0 +1,18 @@
+# ESP32: kirim data, terima perintah
+user esp32
+topic write mes/power/telemetry
+topic write mes/power/status
+topic write mes/power/event
+topic read  mes/power/command
+
+# Dashboard (browser): lihat data, kirim perintah
+user dashboard
+topic read  mes/power/telemetry
+topic read  mes/power/status
+topic read  mes/power/energy
+topic write mes/power/command
+
+# Bridge ke database: baca semua, dan satu-satunya yang boleh menulis ringkasan energi (kWh)
+user bridge
+topic read mes/power/#
+topic write mes/power/energy

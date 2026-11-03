@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MES Power Monitor - Dashboard Industri IoT</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap');
+    
+    :root {
+      --bg: #070d0a;
+      --sidebar: #0a120e;
+      --card: #0f1914;
+      --card-hover: #14221b;
+      --border: #1a2b22;
+      --border-accent: #233b2f;
+      --text-muted: #7d9689;
+      --neon-green: #00e676;
+      --neon-green-glow: rgba(0, 230, 118, 0.2);
+    }
+    
+    body {
+      background-color: var(--bg);
+      color: #e2e8f0;
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      font-size: 15px;
+    }
+
+    .font-mono-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Custom Cards & Containers */
+    .emerald-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    
+    .emerald-card:hover {
+      border-color: var(--border-accent);
+    }
+
+    /* Neon Accent Glows */
+    .glow-green {
+      box-shadow: 0 0 20px var(--neon-green-glow);
+    }
+
+    .glow-red {
+      box-shadow: 0 0 20px rgba(244, 63, 94, 0.25);
+    }
+
+    /* Status Badges */
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-size: 12px;
+      font-weight: 700;
+      border: 1px solid var(--border);
+      background: #0b140f;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+    .chip.ok { background: #052617; color: #00e676; border-color: #00e676/40; }
+    .chip.bad { background: #2a0b10; color: #fda4af; border-color: #f43f5e/40; }
+    .chip.wrn { background: #261c04; color: #fcd34d; border-color: #f59e0b/40; }
+
+    /* Buttons */
+    .btn {
+      min-height: 46px;
+      padding: 0 20px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 14px;
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .btn:focus-visible, input:focus-visible, button:focus-visible {
+      outline: 2px solid var(--neon-green);
+      outline-offset: 2px;
+    }
+    .btn:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+      filter: grayscale(0.5);
+    }
+
+    /* Segmented Time Range Control */
+    .seg {
+      display: inline-flex;
+      background: #08100c;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 3px;
+    }
+    .seg button {
+      min-height: 34px;
+      padding: 0 14px;
+      border-radius: 9px;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 13px;
+      transition: all 0.15s;
+    }
+    .seg button.on {
+      background: var(--neon-green);
+      color: #040a07;
+      font-weight: 800;
+      box-shadow: 0 0 12px rgba(0, 230, 118, 0.3);
+    }
+
+    /* Filter Chips */
+    .f-chip {
+      min-height: 32px;
+      padding: 0 12px;
+      border-radius: 9999px;
+      border: 1px solid var(--border);
+      background: #0a130e;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.15s;
+    }
+    .f-chip.on {
+      background: var(--neon-green);
+      color: #040a07;
+      border-color: var(--neon-green);
+      font-weight: 700;
+    }
+
+    /* Pulse Indicator */
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4b5563;
+      display: inline-block;
+    }
+    .dot.live {
+      background: var(--neon-green);
+      box-shadow: 0 0 8px var(--neon-green);
+      animation: pulseGlow 1.6s infinite;
+    }
+    @keyframes pulseGlow {
+      50% { opacity: 0.3; }
+    }
+
+    /* Event Table Row */
+    .ev-row {
+      display: grid;
+      grid-template-columns: 160px 130px 1fr;
+      gap: 12px;
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--border);
+      align-items: center;
+    }
+    @media(max-width: 640px) {
+      .ev-row { grid-template-columns: 1fr; gap: 4px; }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #070d0a; }
+    ::-webkit-scrollbar-thumb { background: #1a2b22; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--neon-green); }
+  </style>
+</head>
+<body class="min-h-screen antialiased selection:bg-[#00e676] selection:text-black">
+
+  <!-- ==================== LOGIN SECTION ==================== -->
+  <div id="login" class="hidden min-h-screen flex items-center justify-center p-6 relative overflow-hidden">
+    <div class="absolute -top-32 -left-32 w-96 h-96 bg-[#00e676]/10 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="emerald-card p-8 w-full max-w-sm relative z-10 shadow-2xl border border-emerald-950/60">
+      <div class="w-12 h-12 rounded-xl bg-[#00e676]/10 border border-[#00e676]/30 flex items-center justify-center text-[#00e676] mb-4 glow-green">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+      </div>
+      <h1 class="text-2xl font-extrabold text-white tracking-tight mb-1">MES Power Monitor</h1>
+      <p class="text-xs text-[#7d9689] mb-6">Masuk untuk mengawasi sistem &amp; mengontrol relay mesin.</p>
+      
+      <label for="pw" class="block text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Kata Sandi</label>
+      <input id="pw" type="password" placeholder="••••••••" class="w-full bg-[#08100c] border border-[#1a2b22] rounded-xl px-4 py-3 mb-4 text-white outline-none focus:border-[#00e676] font-mono-num">
+      
+      <button id="btn-login" class="btn w-full bg-[#00e676] hover:bg-[#00c853] text-black font-extrabold shadow-lg hover:shadow-[#00e676]/20">
+        Masuk Sistem
+      </button>
+      <p id="login-err" role="alert" class="text-rose-400 text-xs font-semibold mt-3 h-5 text-center"></p>
+    </div>
+  </div>
+
+  <!-- ==================== APP LAYOUT ==================== -->
+  <div id="app" class="hidden lg:flex min-h-screen">
+    
+    <!-- SIDEBAR NAV (Desktop) -->
+    <aside class="hidden lg:flex flex-col w-64 shrink-0 p-5 sticky top-0 h-screen border-r border-[#1a2b22]" style="background: var(--sidebar);">
+      <!-- App Brand -->
+      <div class="flex items-center gap-3 px-2 mb-8">
+        <div class="w-10 h-10 rounded-xl bg-[#00e676]/10 border border-[#00e676]/30 flex items-center justify-center text-[#00e676] glow-green">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <div>
+          <h2 class="font-extrabold text-white text-base leading-tight tracking-tight">MES Power</h2>
+          <p class="text-[11px] font-semibold text-[#00e676]">IoT Monitor v3.0</p>
+        </div>
+      </div>
+
+      <p class="text-[11px] font-bold tracking-wider text-[#7d9689] uppercase px-3 mb-3">Navigasi Utama</p>
+      
+      <!-- Navigation Links -->
+      <nav class="space-y-1.5" aria-label="Navigasi bagian">
+        <a href="#ringkasan" class="flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-gray-300 hover:bg-[#122019] hover:text-[#00e676] transition-all">
+          <svg class="w-5 h-5 text-[#00e676]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+          Ringkasan Daya
+        </a>
+        <a href="#energi" class="flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-gray-300 hover:bg-[#122019] hover:text-[#00e676] transition-all">
+          <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Konsumsi Energi
+        </a>
+        <a href="#grafik" class="flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-gray-300 hover:bg-[#122019] hover:text-[#00e676] transition-all">
+          <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+          Grafik Histori
+        </a>
+        <a href="#kontrol" class="flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-gray-300 hover:bg-[#122019] hover:text-[#00e676] transition-all">
+          <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+          Kontrol Relay
+        </a>
+        <a href="#log" class="flex items-center gap-3 px-3 py-2.5 rounded-xl font-semibold text-gray-300 hover:bg-[#122019] hover:text-[#00e676] transition-all">
+          <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Log Kejadian
+        </a>
+      </nav>
+
+      <!-- Connection Indicator Card (Sidebar Bottom) -->
+      <div class="mt-auto emerald-card p-4 text-xs">
+        <p class="text-[#7d9689] font-medium mb-1.5">Status Telemetri</p>
+        <div class="flex items-center gap-2">
+          <span id="live-dot" class="dot"></span>
+          <span id="live-txt" class="font-bold text-gray-200">Menunggu data</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- MAIN CONTENT AREA -->
+    <main class="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 max-w-[1440px] mx-auto space-y-6">
+      
+      <!-- HEADER & BADGES -->
+      <header class="flex flex-wrap gap-4 items-start justify-between">
+        <div>
+          <p class="text-xs font-bold text-[#00e676] tracking-wider uppercase mb-1">MES Power Monitor System</p>
+          <h1 class="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">IoT Real-time Dashboard &amp; Analytics</h1>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2.5">
+          <div id="conn-badge" class="chip" role="status">ESP32: ...</div>
+          <div id="status-badge" class="chip" role="status">MENUNGGU...</div>
+          <div id="mqtt-badge" class="chip" role="status">MQTT: ...</div>
+          <button id="btn-logout" class="btn bg-[#122019] hover:bg-rose-950/40 hover:text-rose-400 border border-[#1a2b22] text-xs font-semibold py-2">
+            Keluar
+          </button>
+        </div>
+      </header>
+
+      <!-- Mobile Navigation Bar -->
+      <nav class="lg:hidden flex gap-2 overflow-x-auto pb-2 border-b border-[#1a2b22]" aria-label="Navigasi bagian">
+        <a href="#ringkasan" class="f-chip flex items-center justify-center">Ringkasan</a>
+        <a href="#energi" class="f-chip flex items-center justify-center">Energi</a>
+        <a href="#grafik" class="f-chip flex items-center justify-center">Grafik</a>
+        <a href="#kontrol" class="f-chip flex items-center justify-center">Kontrol</a>
+        <a href="#log" class="f-chip flex items-center justify-center">Log</a>
+      </nav>
+
+      <!-- METADATA SUB-HEADER -->
+      <div class="emerald-card px-4 py-3 flex flex-wrap gap-x-8 gap-y-2 text-xs">
+        <span><span class="text-[#7d9689]">Sampel Terakhir:</span> <b id="meta-seq" class="font-mono-num text-white">#-</b></span>
+        <span><span class="text-[#7d9689]">Waktu Terakhir Diterima:</span> <b id="meta-last" class="font-mono-num text-white">-</b></span>
+        <span id="conn-detail" class="text-amber-300 basis-full empty:hidden font-mono"></span>
+      </div>
+
+      <!-- FAULT ALERT BANNER -->
+      <div id="fault-banner" role="alert" class="hidden rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4 bg-rose-950/40 border-2 border-rose-500/80 glow-red">
+        <div class="flex items-center gap-4">
+          <div class="w-10 h-10 rounded-xl bg-rose-500/20 flex items-center justify-center text-rose-400 font-extrabold text-xl shrink-0">!</div>
+          <div>
+            <p class="font-bold text-rose-200 text-base">FAULT: Sumber listrik diputus otomatis (Proteksi Trip)</p>
+            <p class="text-xs text-gray-300 mt-0.5">Periksa fisik mesin &amp; jaringan dari korsleting/overload sebelum memulihkan.</p>
+          </div>
+        </div>
+        <button id="btn-open-reset" class="btn bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs uppercase tracking-wider">
+          Pulihkan dari FAULT
+        </button>
+      </div>
+
+      <!-- 3. MONITORING OVERVIEW – DATA UTAMA -->
+      <section id="ringkasan" aria-label="Parameter listrik utama" class="scroll-mt-6 grid grid-cols-1 sm:grid-cols-3 gap-5">
+        
+        <!-- Card Tegangan -->
+        <div class="emerald-card p-6 relative overflow-hidden group">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-bold text-[#7d9689] uppercase tracking-wider">Tegangan (AC)</span>
+            <div class="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 font-bold">⚡</div>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span id="val-v" class="font-mono-num text-4xl sm:text-5xl font-extrabold text-amber-400 tracking-tight">--</span>
+            <span class="text-sm font-semibold text-amber-400/80">Volt</span>
+          </div>
+          <p class="text-[11px] text-[#7d9689] mt-3 pt-3 border-t border-[#1a2b22] flex justify-between">
+            <span>Nominal Listrik</span>
+            <span class="font-mono text-gray-300">220.0 V</span>
+          </p>
+        </div>
+
+        <!-- Card Arus -->
+        <div class="emerald-card p-6 relative overflow-hidden group">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-bold text-[#7d9689] uppercase tracking-wider">Arus Listrik</span>
+            <div class="w-9 h-9 rounded-xl bg-[#00e676]/10 border border-[#00e676]/20 flex items-center justify-center text-[#00e676] font-bold">〰</div>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span id="val-i" class="font-mono-num text-4xl sm:text-5xl font-extrabold text-[#00e676] tracking-tight">--</span>
+            <span class="text-sm font-semibold text-[#00e676]/80">Ampere</span>
+          </div>
+          <p class="text-[11px] text-[#7d9689] mt-3 pt-3 border-t border-[#1a2b22] flex justify-between">
+            <span>Peringatan / Trip Arus</span>
+            <span class="font-mono text-gray-300">1.000 / 1.500 A</span>
+          </p>
+        </div>
+
+        <!-- Card Daya -->
+        <div class="emerald-card p-6 relative overflow-hidden group">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-xs font-bold text-[#7d9689] uppercase tracking-wider">Daya Aktif</span>
+            <div class="w-9 h-9 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400 font-bold">⏻</div>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span id="val-p" class="font-mono-num text-4xl sm:text-5xl font-extrabold text-rose-400 tracking-tight">--</span>
+            <span class="text-sm font-semibold text-rose-400/80">Watt</span>
+          </div>
+          <p class="text-[11px] text-[#7d9689] mt-3 pt-3 border-t border-[#1a2b22] flex justify-between">
+            <span>Peringatan / Trip Daya</span>
+            <span class="font-mono text-gray-300">250 / 310 W</span>
+          </p>
+        </div>
+      </section>
+
+      <!-- 4. ENERGY MONITORING -->
+      <section id="energi" aria-label="Monitoring energi" class="scroll-mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+        <!-- Energi Hari Ini -->
+        <div class="emerald-card p-6">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xs font-bold text-[#7d9689] uppercase tracking-wider">Energi Hari Ini</h2>
+            <span class="text-[10px] font-bold text-cyan-400 bg-cyan-950/40 px-2.5 py-1 rounded-full border border-cyan-800/40">HARIAN</span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span id="kwh-today" class="font-mono-num text-4xl font-extrabold text-cyan-300">--</span>
+            <span class="text-sm font-semibold text-cyan-300/80">kWh</span>
+          </div>
+          <p class="text-xs text-gray-300 mt-2">Estimasi Biaya Listrik: <b id="cost-today" class="font-mono text-white font-bold">--</b></p>
+          <p class="text-xs text-[#7d9689] mt-1">Register PZEM (Serial): <b id="pzem-e" class="text-gray-200 font-mono">--</b> kWh</p>
+        </div>
+
+        <!-- Energi 30 Hari Terakhir -->
+        <div class="emerald-card p-6">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-xs font-bold text-[#7d9689] uppercase tracking-wider">Energi 30 Hari Terakhir</h2>
+            <span id="tariff" class="text-xs font-mono text-gray-400"></span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span id="kwh-month" class="font-mono-num text-4xl font-extrabold text-cyan-300">--</span>
+            <span class="text-sm font-semibold text-cyan-300/80">kWh</span>
+          </div>
+          <p class="text-xs text-gray-300 mt-2">Total Biaya Bulanan: <b id="cost-month" class="font-mono text-white font-bold">--</b></p>
+        </div>
+      </section>
+      <p id="energy-note" class="text-xs text-[#7d9689] px-1 -mt-2"></p>
+
+      <!-- 5. HISTORY ANALYTICS – GRAFIK MONITORING -->
+      <section id="grafik" aria-label="Grafik histori" class="scroll-mt-6 emerald-card p-6 space-y-6">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-[#1a2b22] pb-4">
+          <div>
+            <h2 class="text-base font-extrabold text-white flex items-center gap-2">
+              <svg class="w-5 h-5 text-[#00e676]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+              Grafik Histori Real-time
+            </h2>
+            <p class="text-xs text-[#7d9689] mt-0.5">Tren konsumsi arus &amp; daya dengan ambang batas trip</p>
+          </div>
+          
+          <div id="range-btns" class="seg" role="group" aria-label="Rentang waktu">
+            <button data-r="1h" class="range">1 jam</button>
+            <button data-r="6h" class="range">6 jam</button>
+            <button data-r="24h" class="range">24 jam</button>
+            <button data-r="7d" class="range">7 hari</button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div class="bg-[#09110d] p-4 rounded-xl border border-[#16271e]">
+            <h3 class="text-xs font-bold text-gray-300 uppercase tracking-wider mb-3">Arus Listrik (Ampere)</h3>
+            <div class="relative h-64"><canvas id="chartI" role="img" aria-label="Grafik arus listrik"></canvas></div>
+          </div>
+          <div class="bg-[#09110d] p-4 rounded-xl border border-[#16271e]">
+            <h3 class="text-xs font-bold text-gray-300 uppercase tracking-wider mb-3">Daya Listrik (Watt)</h3>
+            <div class="relative h-64"><canvas id="chartP" role="img" aria-label="Grafik daya listrik"></canvas></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 6. MACHINE RELAY CONTROL -->
+      <section id="kontrol" aria-label="Kontrol relay" class="scroll-mt-6 emerald-card p-6 border-l-4 border-l-[#00e676]">
+        <div class="flex flex-wrap items-start justify-between gap-6">
+          <div>
+            <h2 class="text-base font-extrabold text-white flex items-center gap-2">
+              <svg class="w-5 h-5 text-[#00e676]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4"/></svg>
+              Kontrol Relay Mesin Industri
+            </h2>
+            <div class="flex items-center gap-2 mt-2">
+              <span class="text-xs text-[#7d9689]">Status Mesin Saat Ini:</span>
+              <span id="ctl-status" class="chip">-</span>
+            </div>
+            <p id="ctl-msg" role="status" class="text-xs mt-3 text-[#7d9689]">Perintah dikirim ke ESP32 via MQTT broker (tunda ±2 dtk).</p>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+            <button id="btn-on" class="btn bg-[#00e676] hover:bg-[#00c853] text-black font-extrabold sm:min-w-[200px] shadow-lg hover:shadow-[#00e676]/20">
+              ▶ NYALAKAN (RUN)
+            </button>
+            <button id="btn-off" class="btn bg-rose-600 hover:bg-rose-500 text-white font-extrabold sm:min-w-[200px]">
+              ■ MATIKAN (STOP)
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 7. EVENT LOG – LOG KEJADIAN -->
+      <section id="log" aria-label="Log kejadian" class="scroll-mt-6 emerald-card p-6">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-4 border-b border-[#1a2b22] pb-4">
+          <div>
+            <h2 class="text-base font-extrabold text-white">Log Kejadian &amp; Aktivitas</h2>
+            <p class="text-xs text-[#7d9689] mt-0.5">Riwayat trip, kontrol relay, dan aktivitas sistem</p>
+          </div>
+          <div id="ev-filters" class="flex flex-wrap gap-2" role="group" aria-label="Filter kategori"></div>
+        </div>
+        <div id="events" class="max-h-80 overflow-y-auto text-xs" tabindex="0" aria-label="Daftar kejadian"></div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- POP-UP FAULT OTOMATIS -->
+  <div id="fault-popup" role="alertdialog" aria-modal="true" aria-labelledby="fp-t" class="hidden fixed inset-0 bg-black/85 z-[60] flex items-center justify-center p-4">
+    <div class="emerald-card p-6 max-w-md w-full border-2 border-rose-500 glow-red">
+      <div class="flex items-center gap-4 mb-4">
+        <div class="bg-rose-600 text-white rounded-full w-12 h-12 flex items-center justify-center text-2xl font-extrabold shrink-0 animate-pulse">!</div>
+        <div>
+          <h3 id="fp-t" class="text-lg font-extrabold text-rose-300">PERINGATAN: MESIN FAULT!</h3>
+          <p class="text-xs text-gray-400">Sistem Proteksi Listrik Terpemicu</p>
+        </div>
+      </div>
+      <p class="text-sm text-gray-200 mb-6 leading-relaxed">
+        Sumber listrik telah <b class="text-rose-400 font-bold">diputus otomatis</b> oleh ESP32 untuk mengamankan peralatan (overpower, overcurrent, atau sensor terputus).
+      </p>
+      <div class="flex justify-end gap-3">
+        <button id="btn-close-fault-popup" class="btn bg-[#1a2b22] hover:bg-[#233b2f] text-gray-300 text-xs">Tutup</button>
+        <button id="btn-action-pulihkan" class="btn bg-amber-500 hover:bg-amber-400 text-black text-xs font-extrabold">Pulihkan Sekarang</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast High Power Warning -->
+  <div id="toast" role="alert" class="hidden fixed bottom-6 right-6 left-6 sm:left-auto px-5 py-4 rounded-2xl shadow-2xl z-50 flex items-center gap-4 bg-amber-950/90 border border-amber-500">
+    <div class="bg-amber-500 text-black rounded-full w-9 h-9 flex items-center justify-center font-bold shrink-0">!</div>
+    <div>
+      <h4 class="font-bold text-amber-200 text-sm">PERINGATAN: Beban Tinggi!</h4>
+      <p id="toast-p-row" class="hidden text-xs text-gray-200 mt-0.5">Daya saat ini: <b id="toast-val" class="text-amber-300 font-mono">0</b> / <span id="toast-max" class="font-mono">310</span> W</p>
+      <p id="toast-i-row" class="hidden text-xs text-gray-200 mt-0.5">Arus saat ini: <b id="toast-ival" class="text-amber-300 font-mono">0</b> / <span id="toast-imax" class="font-mono">1.5</span> A</p>
+    </div>
+  </div>
+
+  <!-- Modal Konfirmasi RUN -->
+  <div id="modal-run" role="dialog" aria-modal="true" aria-labelledby="mr-t" class="hidden fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4">
+    <div class="emerald-card p-6 max-w-md w-full">
+      <h3 id="mr-t" class="text-lg font-bold text-white mb-2">Nyalakan Mesin Industri?</h3>
+      <p class="text-xs text-gray-300 mb-5 leading-relaxed">Relay daya akan diaktifkan dan mesin berstatus <b>RUNNING</b>. Pastikan area operasional aman.</p>
+      <div class="flex justify-end gap-3">
+        <button id="btn-run-cancel" class="btn bg-[#1a2b22] hover:bg-[#233b2f] text-xs">Batal</button>
+        <button id="btn-run-ok" class="btn bg-[#00e676] hover:bg-[#00c853] text-black text-xs font-extrabold">Ya, Nyalakan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Reset FAULT -->
+  <div id="modal" role="dialog" aria-modal="true" aria-labelledby="mf-t" class="hidden fixed inset-0 bg-black/75 z-50 flex items-center justify-center p-4">
+    <div class="emerald-card p-6 max-w-md w-full border border-amber-500/50">
+      <h3 id="mf-t" class="text-lg font-bold text-amber-300 mb-2">Pulihkan dari FAULT</h3>
+      <p class="text-xs text-gray-300 mb-4 leading-relaxed">Setelah dipulihkan, mesin akan langsung berstatus <b class="text-white">RUNNING</b> (relay otomatis ON kembali).</p>
+      <label class="flex items-start gap-3 mb-5 cursor-pointer text-xs text-gray-300">
+        <input id="chk-confirm" type="checkbox" class="mt-0.5 w-4 h-4 accent-[#00e676]">
+        <span>Saya sudah memeriksa penyebab trip (beban berlebih / korsleting) dan kondisi fisik sudah aman.</span>
+      </label>
+      <p id="modal-err" role="alert" class="text-rose-400 text-xs mb-3 h-5"></p>
+      <div class="flex justify-end gap-3">
+        <button id="btn-cancel" class="btn bg-[#1a2b22] hover:bg-[#233b2f] text-xs">Batal</button>
+        <button id="btn-confirm" disabled class="btn bg-amber-500 hover:bg-amber-400 text-black text-xs font-extrabold">Pulihkan &amp; Nyalakan</button>
+      </div>
+    </div>
+  </div>
+
+<!-- ==================== JAVASCRIPT LOGIC ==================== -->
+<script>
+const $ = (id) => document.getElementById(id);
+const TZ = 'Asia/Jakarta';
+const rupiah = (n) => 'Rp ' + Math.round(n).toLocaleString('id-ID');
+let range = '1h', limits = { warnPowerW: 250, warnCurrentA: 1.0, tripPowerW: 310, tripCurrentA: 1.5 };
+let timers = [], online = false, status = 'UNKNOWN';
+let faultPopupShown = false, cmdBusy = false;
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, ...opts });
+  if (r.status === 401 && path !== '/api/login') { showLogin(); throw new Error('login_required'); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(data.message || data.error || r.statusText); e.data = data; throw e; }
+  return data;
+}
+const post = (path, body) => api(path, { method: 'POST', body: JSON.stringify(body || {}) });
+
+// ---------- Grafik ----------
+Chart.defaults.font.family = 'Plus Jakarta Sans, system-ui, sans-serif';
+function makeChart(id, label, color, unit) {
+  const ax = (t) => ({ display: true, text: t, color: '#7d9689', font: { size: 11, weight: '600' } });
+  return new Chart($(id).getContext('2d'), {
+    type: 'line',
+    data: { labels: [], datasets: [
+      { label, data: [], borderColor: color, backgroundColor: color + '1a', borderWidth: 2, pointRadius: 0, pointHoverRadius: 5, tension: 0.25, fill: true },
+      { label: 'Batas trip', data: [], borderColor: '#fbbf24', borderDash: [6, 4], borderWidth: 1.5, pointRadius: 0, fill: false },
+      { label: 'Batas peringatan', data: [], borderColor: '#fb923c', borderDash: [2, 4], borderWidth: 1.5, pointRadius: 0, fill: false },
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      scales: {
+        y: { beginAtZero: true, title: ax(unit), grid: { color: 'rgba(255,255,255,.05)' }, ticks: { color: '#7d9689' } },
+        x: { title: ax('Waktu (WIB)'), grid: { color: 'rgba(255,255,255,.02)' }, ticks: { color: '#7d9689', maxTicksLimit: 8 } },
+      },
+      plugins: {
+        legend: { labels: { color: '#e2e8f0', usePointStyle: true, boxWidth: 8, font: { size: 11 } } },
+        tooltip: { backgroundColor: '#0f1914', borderColor: '#1a2b22', borderWidth: 1, titleColor: '#fff', bodyColor: '#e2e8f0',
+          callbacks: { label: (c) => ' ' + c.dataset.label + ': ' + (c.parsed.y ?? '-') + ' ' + unit.match(/\((.*)\)/)[1] } },
+      },
+    },
+  });
+}
+const chartI = makeChart('chartI', 'Arus aktual (A)', '#00e676', 'Arus (A)');
+const chartP = makeChart('chartP', 'Daya aktual (W)', '#fb7185', 'Daya (W)');
+
+function fmtLabel(iso) {
+  const d = new Date(iso);
+  const o = range === '7d' ? { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' } : { hour: '2-digit', minute: '2-digit' };
+  return d.toLocaleString('id-ID', { timeZone: TZ, hour12: false, ...o });
+}
+
+const liveBuf = [];
+let histRows = [];
+async function loadHistory() { histRows = await api('/api/history?range=' + range); drawCharts(); }
+function drawCharts() {
+  const lastT = histRows.length ? new Date(histRows[histRows.length - 1].t).getTime() : 0;
+  const pts = histRows.map((r) => ({ t: new Date(r.t).getTime(), current: r.current, power: r.power }))
+    .concat(liveBuf.filter((l) => l.t > lastT));
+  const labels = pts.map((p) => fmtLabel(p.t));
+  const fill = (c, key, lim, name, warnLim, warnName) => {
+    c.data.labels = labels;
+    c.data.datasets[0].data = pts.map((p) => p[key]);
+    c.data.datasets[1].data = pts.map(() => lim);
+    c.data.datasets[1].label = name;
+    c.data.datasets[2].data = pts.map(() => warnLim);
+    c.data.datasets[2].label = warnName;
+    c.update();
+  };
+  fill(chartI, 'current', limits.tripCurrentA, 'Batas trip ' + limits.tripCurrentA + ' A', limits.warnCurrentA, 'Batas peringatan ' + limits.warnCurrentA + ' A');
+  fill(chartP, 'power', limits.tripPowerW, 'Batas trip ' + limits.tripPowerW + ' W', limits.warnPowerW, 'Batas peringatan ' + limits.warnPowerW + ' W');
+}
+function pushLive(d) {
+  const now = Date.now();
+  if (liveBuf.length && now - liveBuf[liveBuf.length - 1].t < 900) return;
+  liveBuf.push({ t: now, current: d.current, power: d.power });
+  if (liveBuf.length > 300) liveBuf.shift();
+  drawCharts();
+}
+
+// ---------- Data utama (real-time via MQTT) ----------
+const BADGE = { RUNNING: 'ok', FAULT: 'bad', STOPPED: '', UNKNOWN: '' };
+const ICON = { RUNNING: '● ', FAULT: '▲ ', STOPPED: '■ ', UNKNOWN: '○ ' };
+const T = { telemetry: 'mes/power/telemetry', status: 'mes/power/status', command: 'mes/power/command', energy: 'mes/power/energy' };
+const live = { brokerOk: false, espStatus: null, lastTelAt: 0, status: 'UNKNOWN', v: null, i: null, p: null, e: null, seq: null, url: '', err: '' };
+let mq = null;
+
+async function connectMqtt() {
+  if (mq) return;
+  if (typeof mqtt === 'undefined') {
+    live.err = 'Library MQTT gagal dimuat';
+    renderLive(); return;
+  }
+  const cfg = await api('/api/mqtt-config');
+  limits = cfg.limits;
+  let url = cfg.url;
+  try {
+    if (url.startsWith('ws://') && location.protocol === 'http:') {
+      const u = new URL(url); u.hostname = location.hostname; url = u.toString();
+    }
+  } catch (e) {}
+  live.url = url; live.err = '';
+  mq = mqtt.connect(url, {
+    username: cfg.username, password: cfg.password,
+    clientId: 'dash-' + Math.random().toString(16).slice(2, 10),
+    reconnectPeriod: 2000, connectTimeout: 5000, clean: true,
+  });
+  mq.on('connect', () => { live.brokerOk = true; live.err = ''; mq.subscribe([T.telemetry, T.status, T.energy], { qos: 1 }); renderLive(); });
+  const down = (e) => { live.brokerOk = false; if (e && e.message) live.err = e.message; renderLive(); };
+  mq.on('close', down); mq.on('offline', down); mq.on('error', down);
+  mq.on('message', (topic, buf) => {
+    const txt = buf.toString();
+    if (topic === T.energy) { try { applyEnergy(JSON.parse(txt), 'mqtt'); } catch (e) {} return; }
+    if (topic === T.status) live.espStatus = txt;
+    else if (topic === T.telemetry) {
+      try {
+        const d = JSON.parse(txt);
+        live.lastTelAt = Date.now(); live.status = d.status; live.seq = d.seq ?? null;
+        if (d.sensorOk !== false) {
+          live.v = d.voltage; live.i = d.current; live.p = d.power;
+          if (typeof d.energy === 'number') live.e = d.energy;
+          pushLive(d);
+        }
+      } catch (e) {}
+    }
+    renderLive();
+  });
+}
+function disconnectMqtt() { if (mq) { mq.end(true); mq = null; } live.brokerOk = false; }
+
+const espOnline = () => live.brokerOk && live.espStatus === 'online' && Date.now() - live.lastTelAt < 5000;
+
+function renderLive() {
+  online = espOnline(); status = live.status;
+
+  const mb = $('mqtt-badge');
+  mb.textContent = (live.brokerOk ? '● MQTT: TERHUBUNG' : '✕ MQTT: TERPUTUS');
+  mb.className = 'chip ' + (live.brokerOk ? 'ok' : 'bad');
+
+  const cb = $('conn-badge');
+  cb.textContent = (online ? '● ' : '✕ ') + 'ESP32: ' + (online ? 'CONNECTED' : 'DISCONNECTED');
+  cb.className = 'chip ' + (online ? 'ok' : 'bad');
+
+  $('conn-detail').textContent = !live.brokerOk
+    ? 'Tidak terhubung ke broker MQTT' + (live.url ? ' (' + live.url + ')' : '') + '. ' +
+      (live.err ? 'Penyebab: ' + live.err + '. ' : '') + 'Pastikan broker berjalan.'
+    : (live.lastTelAt ? '' : 'Belum ada data dari ESP32.');
+  $('meta-seq').textContent = '#' + (live.seq ?? '-');
+  $('meta-last').textContent = live.lastTelAt
+    ? new Date(live.lastTelAt).toLocaleTimeString('id-ID', { timeZone: TZ, hour12: false }) + ' (' + Math.round((Date.now() - live.lastTelAt) / 1000) + ' dtk lalu)'
+    : '-';
+  $('live-dot').className = 'dot' + (online ? ' live' : '');
+  $('live-txt').textContent = online ? 'Real-time via MQTT' : 'Tidak ada data real-time';
+
+  const label = (online ? status : status + ' (terakhir)');
+  const sb = $('status-badge');
+  sb.textContent = (ICON[status] || '○ ') + label;
+  sb.className = 'chip ' + (BADGE[status] || '');
+  const cs = $('ctl-status'); cs.textContent = sb.textContent; cs.className = sb.className;
+
+  const set = (id, v, dec) => { $(id).textContent = v === null ? '--' : Number(v).toFixed(dec); $(id).style.opacity = online ? 1 : 0.4; };
+  set('val-v', live.v, 1); set('val-i', live.i, 3); set('val-p', live.p, 1);
+  $('pzem-e').textContent = live.e === null ? '--' : Number(live.e).toFixed(3);
+
+  if (status === 'FAULT') {
+    if (!faultPopupShown) { $('fault-popup').classList.remove('hidden'); faultPopupShown = true; }
+  } else { faultPopupShown = false; $('fault-popup').classList.add('hidden'); }
+
+  $('fault-banner').classList.toggle('hidden', status !== 'FAULT');
+  $('btn-on').disabled = cmdBusy || !online || status === 'FAULT' || status === 'RUNNING';
+  $('btn-off').disabled = cmdBusy || !online || status !== 'RUNNING';
+
+  const running = online && status === 'RUNNING';
+  const warnP = running && live.p !== null && live.p >= limits.warnPowerW;
+  const warnI = running && live.i !== null && limits.warnCurrentA != null && live.i >= limits.warnCurrentA;
+  $('toast').classList.toggle('hidden', !(warnP || warnI));
+  $('toast-p-row').classList.toggle('hidden', !warnP);
+  $('toast-i-row').classList.toggle('hidden', !warnI);
+  if (warnP) { $('toast-val').textContent = live.p.toFixed(1); $('toast-max').textContent = limits.tripPowerW; }
+  if (warnI) { $('toast-ival').textContent = live.i.toFixed(3); $('toast-imax').textContent = limits.tripCurrentA; }
+}
+
+function sendCmd(cmd) {
+  if (!mq || !live.brokerOk) return 'Tidak terhubung ke broker MQTT.';
+  if (!online) return 'ESP32 sedang DISCONNECTED. Perintah tidak dikirim.';
+  mq.publish(T.command, JSON.stringify({ cmd }), { qos: 1, retain: false });
+  return null;
+}
+
+// ---------- Energi ----------
+const ENERGY_CACHE_KEY = 'mes.energy.v1';
+let energy = null, energyFromCache = false, energyMqttAt = 0;
+
+function loadEnergyCache() {
+  try {
+    const e = JSON.parse(localStorage.getItem(ENERGY_CACHE_KEY) || 'null');
+    if (e && typeof e.todayKwh === 'number' && typeof e.monthKwh === 'number' && !energy) { energy = e; energyFromCache = true; renderEnergy(); }
+  } catch (_) {}
+}
+function applyEnergy(e, via) {
+  if (!e || !Number.isFinite(e.todayKwh) || !Number.isFinite(e.monthKwh)) return;
+  if (energy && !energyFromCache && Number.isFinite(e.asOf) && Number.isFinite(energy.asOf) && e.asOf < energy.asOf) return;
+  energy = e; energyFromCache = false;
+  if (via === 'mqtt') energyMqttAt = Date.now();
+  try { localStorage.setItem(ENERGY_CACHE_KEY, JSON.stringify(e)); } catch (_) {}
+  renderEnergy();
+}
+function renderEnergy() {
+  if (!energy) return;
+  $('kwh-today').textContent = energy.todayKwh.toFixed(3);
+  $('kwh-month').textContent = energy.monthKwh.toFixed(3);
+  $('cost-today').textContent = rupiah(energy.todayCost);
+  $('cost-month').textContent = rupiah(energy.monthCost);
+  $('tariff').textContent = 'Tarif: Rp ' + energy.tariffPerKwh.toLocaleString('id-ID') + ' / kWh';
+
+  const stale = energyFromCache || Date.now() - energy.asOf > 90000;
+  $('kwh-today').style.opacity = $('kwh-month').style.opacity = stale ? 0.5 : 1;
+  const t = new Date(energy.asOf).toLocaleTimeString('id-ID', { timeZone: TZ, hour12: false });
+  let note;
+  if (energyFromCache) note = 'Menampilkan nilai tersimpan (terakhir ' + t + '). Menunggu data terbaru dari server...';
+  else if (stale) note = 'Server tidak mengirim pembaruan sejak ' + t + '. Angka tersimpan di database.';
+  else if (energy.pending > 0) note = 'Database sedang tidak terjangkau: ' + energy.pending + ' sampel diamankan di antrean server.';
+  else note = 'Dihitung server dari database, diperbarui ' + t + '.';
+  $('energy-note').textContent = note;
+  $('energy-note').style.color = (stale || energy.pending > 0) ? '#fcd34d' : '';
+}
+async function loadEnergy() {
+  if (Date.now() - energyMqttAt < 20000) return;
+  applyEnergy(await api('/api/energy'), 'http');
+}
+
+// ---------- Log ----------
+const EVC = { 
+  DEVICE: ['bg-cyan-950/60 text-cyan-300 border-cyan-800/40', 'ⓘ'], 
+  TRIP: ['bg-rose-950/60 text-rose-300 border-rose-800/40', '▲'],
+  FAULT_RESET: ['bg-amber-950/60 text-amber-300 border-amber-800/40', '↺'], 
+  RELAY_CMD: ['bg-[#00e676]/10 text-[#00e676] border-[#00e676]/30', '⏻'] 
+};
+let evRows = [], evFilter = 'ALL';
+function renderEvents() {
+  const box = $('events');
+  const types = ['ALL', ...new Set(evRows.map((r) => r.type).concat(Object.keys(EVC)))];
+  $('ev-filters').replaceChildren(...types.map((t) => {
+    const b = document.createElement('button');
+    b.className = 'f-chip' + (t === evFilter ? ' on' : ''); b.textContent = t === 'ALL' ? 'Semua' : t;
+    b.setAttribute('aria-pressed', t === evFilter); b.onclick = () => { evFilter = t; renderEvents(); };
+    return b;
+  }));
+  const rows = evRows.filter((r) => evFilter === 'ALL' || r.type === evFilter).sort((a, b) => new Date(b.ts) - new Date(a.ts));
+  box.textContent = '';
+  if (!rows.length) { box.textContent = 'Belum ada kejadian.'; box.style.color = 'var(--text-muted)'; return; }
+  rows.forEach((r) => {
+    const row = document.createElement('div'); row.className = 'ev-row';
+    const t = document.createElement('span'); t.style.color = 'var(--text-muted)'; t.className = 'font-mono';
+    t.textContent = new Date(r.ts).toLocaleString('id-ID', { timeZone: TZ, hour12: false, day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const [cls, ic] = EVC[r.type] || ['bg-slate-800 text-slate-300 border-slate-700', '•'];
+    const tag = document.createElement('span');
+    tag.className = 'inline-block w-fit text-[11px] font-bold px-2 py-0.5 rounded-md border ' + cls; tag.textContent = ic + ' ' + r.type;
+    const d = document.createElement('span'); d.className = 'text-gray-200'; d.textContent = r.detail || '';
+    row.append(t, tag, d); box.appendChild(row);
+  });
+}
+async function loadEvents() { evRows = await api('/api/events'); renderEvents(); }
+
+// ---------- Aksi ----------
+function sendRelay(relay) {
+  const err = sendCmd(relay === 'ON' ? 'RUN' : 'STOP');
+  $('ctl-msg').textContent = err ? '✕ Gagal: ' + err : '✓ Perintah ' + relay + ' terkirim (langsung via MQTT).';
+  $('ctl-msg').style.color = err ? '#fda4af' : '#00e676';
+  if (!err) { cmdBusy = true; const b = relay === 'ON' ? $('btn-on') : $('btn-off'), o = b.textContent; b.textContent = 'Mengirim...'; renderLive();
+    setTimeout(() => { cmdBusy = false; b.textContent = o; renderLive(); }, 2000); }
+}
+$('btn-on').onclick = () => { $('modal-run').classList.remove('hidden'); $('btn-run-ok').focus(); };
+$('btn-run-cancel').onclick = () => $('modal-run').classList.add('hidden');
+$('btn-run-ok').onclick = () => { $('modal-run').classList.add('hidden'); sendRelay('ON'); };
+$('btn-off').onclick = () => sendRelay('OFF');
+
+$('btn-close-fault-popup').onclick = () => $('fault-popup').classList.add('hidden');
+$('btn-action-pulihkan').onclick = () => { $('fault-popup').classList.add('hidden'); $('btn-open-reset').click(); };
+$('btn-open-reset').onclick = () => { $('chk-confirm').checked = false; $('btn-confirm').disabled = true; $('modal-err').textContent = ''; $('modal').classList.remove('hidden'); };
+$('btn-cancel').onclick = () => $('modal').classList.add('hidden');
+$('chk-confirm').onchange = (e) => { $('btn-confirm').disabled = !e.target.checked; };
+$('btn-confirm').onclick = () => {
+  const err = sendCmd('RESET');
+  if (err) { $('modal-err').textContent = err; return; }
+  $('modal').classList.add('hidden');
+  $('ctl-msg').textContent = '✓ Reset FAULT terkirim. Mesin langsung berstatus RUNNING.'; $('ctl-msg').style.color = '#00e676';
+};
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') ['modal-run', 'modal', 'fault-popup'].forEach((id) => $(id).classList.add('hidden')); });
+
+document.querySelectorAll('.range').forEach((b) => b.onclick = () => { range = b.dataset.r; markRange(); loadHistory(); });
+function markRange() {
+  document.querySelectorAll('.range').forEach((b) => { b.classList.toggle('on', b.dataset.r === range); b.setAttribute('aria-pressed', b.dataset.r === range); });
+}
+
+// ---------- Login / Lifecycle ----------
+function stopTimers() { timers.forEach(clearInterval); timers = []; }
+function showLogin() { stopTimers(); disconnectMqtt(); liveBuf.length = 0; $('app').classList.add('hidden'); $('toast').classList.add('hidden'); $('login').classList.remove('hidden'); }
+async function showApp() {
+  $('login').classList.add('hidden'); $('app').classList.remove('hidden'); markRange();
+  stopTimers();
+  loadEnergyCache();
+  const safe = (fn) => () => fn().catch(() => {});
+  [loadHistory, loadEnergy, loadEvents].forEach((f) => safe(f)());
+  connectMqtt().catch((e) => { live.err = 'Gagal memuat konfigurasi MQTT: ' + e.message; renderLive(); });
+  timers.push(setInterval(() => { renderLive(); renderEnergy(); }, 1000), setInterval(safe(loadHistory), 10000),
+              setInterval(safe(loadEnergy), 15000), setInterval(safe(loadEvents), 10000));
+}
+async function doLogin() {
+  $('login-err').textContent = '';
+  try { await post('/api/login', { password: $('pw').value }); $('pw').value = ''; showApp(); }
+  catch (e) { $('login-err').textContent = e.message === 'wrong_password' ? 'Password salah.' : 'Gagal masuk: ' + e.message; }
+}
+$('btn-login').onclick = doLogin;
+$('pw').onkeydown = (e) => { if (e.key === 'Enter') doLogin(); };
+$('btn-logout').onclick = async () => { await post('/api/logout').catch(() => {}); showLogin(); };
+
+api('/api/mqtt-config').then(showApp).catch(() => showLogin());
+</script>
+</body>
+</html>

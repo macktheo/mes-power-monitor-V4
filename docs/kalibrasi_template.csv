@@ -1,0 +1,5 @@
+tanggal,jenis_beban,beban_nominal,v_pzem,v_ref,i_pzem,i_ref,p_pzem,p_ref,galat_v_persen,galat_i_persen,galat_p_persen,catatan
+2026-11-01,resistif,lampu pijar 40W,,,,,,,,,,
+2026-11-01,resistif,lampu pijar 100W,,,,,,,,,,
+2026-11-01,induktif,kipas angin,,,,,,,,,,
+2026-11-01,elektronik,charger laptop,,,,,,,,,,
